@@ -102,6 +102,8 @@ def fetch_inputs(numPreprocessThreads=None, numReaders=1, **kwargs):
         filenames = glob.glob(os.path.join(dataDir, "*.tfrecords"))
         # read parameters
         ph = kwargs.get('phase')
+        print(dataDir)
+        filenames.sort()
         if filenames is None or len(filenames) == 0:
             raise ValueError("No filenames found for stage: %s" % ph)
         '''
@@ -113,7 +115,7 @@ def fetch_inputs(numPreprocessThreads=None, numReaders=1, **kwargs):
         if ph == 'train':
             # Create a queue that produces the filenames to read.
             filenameQueue = tf.train.string_input_producer(filenames,
-                                                           shuffle=True,
+                                                           shuffle=False,
                                                            capacity=8)
         else:
             filenameQueue = tf.train.string_input_producer(filenames,
@@ -142,19 +144,26 @@ def fetch_inputs(numPreprocessThreads=None, numReaders=1, **kwargs):
             examplesPerShard = FLAGS.trainShardSize
             minQueueExamples = examplesPerShard * FLAGS.inputQueueMemoryFactor
             # create example queue place holder
-            examplesQueue = tf.RandomShuffleQueue(
-                capacity=minQueueExamples + 3 * kwargs.get('activeBatchSize'),
-                min_after_dequeue=minQueueExamples,
-                dtypes=[tf.string])
+            #examplesQueue = tf.RandomShuffleQueue(
+            #    capacity=minQueueExamples + 3 * kwargs.get('activeBatchSize'),
+            #    min_after_dequeue=minQueueExamples,
+            #    dtypes=[tf.string])
+            examplesQueue = tf.FIFOQueue(
+                                capacity=minQueueExamples + 3 * kwargs.get('activeBatchSize'),
+                                dtypes=[tf.string])
         else:
             # calculate number of examples per shard.
             examplesPerShard = FLAGS.testShardSize
             minQueueExamples = examplesPerShard * FLAGS.inputQueueMemoryFactor
             # create example queue place holder
-            examplesQueue = tf.RandomShuffleQueue(
-                capacity=minQueueExamples + 3 * kwargs.get('activeBatchSize'),
-                min_after_dequeue=minQueueExamples,
-                dtypes=[tf.string])
+            #examplesQueue = tf.RandomShuffleQueue(
+            #    capacity=minQueueExamples + 3 * kwargs.get('activeBatchSize'),
+            #    min_after_dequeue=minQueueExamples,
+            #    dtypes=[tf.string])
+            examplesQueue = tf.FIFOQueue(
+                                capacity=minQueueExamples + 3 * kwargs.get('activeBatchSize'),
+                                dtypes=[tf.string])
+
         # read examples, put in the queue, and generate serialized examples
         if numReaders > 1:
             enqueue_ops = []

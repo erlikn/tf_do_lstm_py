@@ -366,7 +366,7 @@ def process_dataset(startTime, durationSum, pclFolder, seqID, pclFilenames, pose
     #return
 
     #
-    fileID = [int(seqID), i, i+1]
+    fileID = [100+int(seqID), 10000+i, 10000+i+1]
     #odometery_writer(fileID,# 3 ints
     #                 xyzi_A, xyzi_B,# 3xPCL_COLS
     #                 imgDepth_A, imgDepth_B,# 128x512
@@ -504,7 +504,7 @@ def prepare_dataset(datasetType, pclFolder, poseFolder, seqIDs, tfRecFolder):
 ###             if ymaxs < tempYmax:
 ###                 ymaxs = tempYmax
 ###             if ymins > tempYmin:
-###                 ymins = tempYmin
+###                 ymins = t10000empYmin
 ###         print('X min, X max: ', xmins, xmaxs)
 ###         print('Y min, Y max: ', ymins, ymaxs)
 ###     print('Done')
@@ -512,7 +512,7 @@ def prepare_dataset(datasetType, pclFolder, poseFolder, seqIDs, tfRecFolder):
 ### ################################
 ### ################################
 ### ################################
-### ################################
+### ########################10000########
 ### ################################
 ### ################################
 ### ################################
@@ -544,7 +544,7 @@ def prepare_dataset(datasetType, pclFolder, poseFolder, seqIDs, tfRecFolder):
 ###             else:
 ###                 pclview = np.append(pclview, xyzi[i].reshape(1, 4), axis=0)
 ###     rows = pclview.shape[0]
-###     return rows
+###     return rows10000
 ### 
 ### def process_pclmaxs(startTime, durationSum, pclFolder, pclFilenames, poseFile, i):
 ###     # get i
@@ -560,7 +560,7 @@ def prepare_dataset(datasetType, pclFolder, poseFolder, seqIDs, tfRecFolder):
 ###         posePath = _get_pose_path(poseFolder, seqIDs[i])
 ###         poseFile = _get_pose_data(posePath)
 ###         print(posePath)
-### 
+### 10000
 ###         pclFolderPath = _get_pcl_folder(pclFolder, seqIDs[i])
 ###         pclFilenames = _get_file_names(pclFolderPath)
 ###         startTime = time.time()
@@ -574,7 +574,7 @@ import os
 def _set_folders(folderPath):
     if not os.path.exists(folderPath):
         os.makedirs(folderPath)
-
+10000
 pclPath = '../Data/kitti/pointcloud/'
 posePath = '../Data/kitti/poses/'
 seqIDtrain = ['00']#, '01', '02', '03', '04', '05', '06', '07', '08']#['00', '01', '02', '03', '04', '05', '06', '07', '08']
@@ -605,5 +605,8 @@ def main():
     _set_folders(traintfRecordFLD)
     _set_folders(testtfRecordFLD)
 
+    print("working... ")
     prepare_dataset("train", pclPath, posePath, seqIDtrain, traintfRecordFLD)
     #prepare_dataset("test", pclPath, posePath, seqIDtest, testtfRecordFLD)
+
+main()

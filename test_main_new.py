@@ -27,12 +27,12 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 #import tensorflow.python.debug as tf_debug
 
-PHASE = 'train'
+PHASE = 'test'
 # import json_maker, update json files and read requested json file
 import Model_Settings.json_maker as json_maker
 json_maker.recompile_json_files()
-#jsonToRead = '190101_ITR_B_1.json' #100000 W #0
-jsonToRead = '190102_ITR_B_1.json' #100000 W #0
+#jsonToRead = '190101_ITR_B_1.json'
+jsonToRead = '190102_ITR_B_1.json'
 print("Reading %s" % jsonToRead)
 with open('Model_Settings/'+jsonToRead) as data_file:
     modelParams = json.load(data_file)
@@ -54,16 +54,17 @@ model_cnn = importlib.import_module('Model_Factory.'+modelParams['modelName'])
 
 ####################################################
 ####################################################
+KITTI_TEST = 10
 FLAGS = tf.app.flags.FLAGS
-tf.app.flags.DEFINE_integer('printOutStep', 100,
+tf.app.flags.DEFINE_integer('printOutStep', KITTI_TEST,
                             """Number of batches to run.""")
-tf.app.flags.DEFINE_integer('summaryWriteStep', 100,
+tf.app.flags.DEFINE_integer('summaryWriteStep', KITTI_TEST,
                             """Number of batches to run.""")
 tf.app.flags.DEFINE_integer('modelCheckpointStep', 1000,
                             """Number of batches to run.""")
-tf.app.flags.DEFINE_integer('ProgressStepReportStep', 100,
+tf.app.flags.DEFINE_integer('ProgressStepReportStep', KITTI_TEST,
                             """Number of batches to run.""")
-tf.app.flags.DEFINE_integer('ProgressStepReportOutputWrite', 25,
+tf.app.flags.DEFINE_integer('ProgressStepReportOutputWrite', KITTI_TEST,
                             """Number of batches to run.""")
 ####################################################
 ####################################################
@@ -72,20 +73,20 @@ def _get_control_params():
     #params['shardMeta'] = model_cnn.getShardsMetaInfo(FLAGS.dataDir, params['phase'])
 
     modelParams['existingParams'] = None
-
-    if modelParams['phase'] == 'train':
-        modelParams['activeBatchSize'] = modelParams['trainBatchSize']
-        modelParams['maxSteps'] = modelParams['trainMaxSteps']
-        modelParams['numExamples'] = modelParams['numTrainDatasetExamples']
-        modelParams['dataDir'] = modelParams['trainDataDir']
-        modelParams['warpedOutputFolder'] = modelParams['warpedTrainDataDir']
-
-    if modelParams['phase'] == 'test':
-        modelParams['activeBatchSize'] = modelParams['testBatchSize']
-        modelParams['maxSteps'] = modelParams['testMaxSteps']
-        modelParams['numExamples'] = modelParams['numTestDatasetExamples']
-        modelParams['dataDir'] = modelParams['testDataDir']
-        modelParams['warpedOutputFolder'] = modelParams['warpedTestDataDir']
+    
+    modelParams['activeBatchSize'] = modelParams['testBatchSize']
+    ### TEST the TRAIN
+    modelParams['numExamples'] = modelParams['numTrainDatasetExamples']
+    modelParams['dataDir'] = modelParams['trainDataDir']
+    modelParams['maxSteps'] = int(np.ceil(modelParams['numExamples']/modelParams['activeBatchSize']))+100
+    modelParams['warpedOutputFolder'] = modelParams['warpedTrainDataDir']
+    modelParams['tmatOutputDir'] = modelParams['tMatTrainDir']
+    ### TEST the TEST
+    #modelParams['numExamples'] = modelParams['numTestDatasetExamples']
+    #modelParams['dataDir'] = modelParams['testDataDir']
+    #modelParams['maxSteps'] = int(np.ceil(modelParams['numExamples']/modelParams['activeBatchSize']))
+    #modelParams['warpedOutputFolder'] = modelParams['warpedTestDataDir']
+    #modelParams['tmatOutputDir'] = modelParams['tMatTestDir']
 
 ####################################################
 ####################################################
@@ -217,7 +218,7 @@ def pcl_params_loss(pclA, pred, target, **kwargs): # batchSize=Sne
     return pcl_loss(pclA, tMatP, tMatT, **kwargs)
 ####################################################
 ####################################################
-def train():
+def test():
     _get_control_params()
 
     if not os.path.exists(modelParams['dataDir']):
@@ -247,9 +248,9 @@ def train():
         loss = model_cnn.loss_l2reg(targetP, targetT, l2reg, **modelParams)
         # Build a Graph that trains the model with one batch of examples and
         # updates the model parameters.
-        opTrain = model_cnn.train(loss, globalStep, **modelParams)
+        #opTrain = model_cnn.train(loss, globalStep, **modelParams)
         ##############################
-        print('Training     ready')
+        print('Testing     ready')
         # Create a saver.
         saver = tf.train.Saver(tf.global_variables())
         print('Saver        ready')
@@ -274,19 +275,19 @@ def train():
         sess.run(init)
 
 
-        model_load_step = 0
         # restore a saver.
-        if model_load_step != 0:
-            saver.restore(sess, (modelParams['trainLogDir'])+'/model.ckpt-'+str(model_load_step))
-            print('Ex-Model     loaded')
+        #saver.restore(sess, (modelParams['trainLogDir'].replace('_B_2','_B_1'))+'/model.ckpt-'+str(modelParams['trainMaxSteps']-1))
+        saver.restore(sess, (modelParams['trainLogDir'])+'/model.ckpt-'+str(modelParams['trainMaxSteps']-1))
+        #saver.restore(sess, (modelParams['trainLogDir'])+'/model.ckpt-'+str(130000))
+        print('Train Model  loaded')
 
         # Start the queue runners.
         tf.train.start_queue_runners(sess=sess)
         print('QueueRunner  started')
 
-        summaryWriter = tf.summary.FileWriter(modelParams['trainLogDir'], sess.graph)
+        #summaryWriter = tf.summary.FileWriter(modelParams['trainLogDir'], sess.graph)
         
-        print('Training     started')
+        print('Testing     started')
 
         ### COUNT PARAMTERS
         total_parameters = 0
@@ -307,41 +308,56 @@ def train():
         filesDictionaryAccumTrain = {}
         durationSum = 0
         durationSumAll = 0
-        for step in xrange(model_load_step, modelParams['maxSteps']):
-            startTime = time.time()
-            _, evtfrecFileIDs, lossValue, l2regValue = sess.run([opTrain, tfrecFileIDs, loss, l2reg])
-            for fileIdx in range(modelParams['activeBatchSize']):
-                    fileIDname = str(evtfrecFileIDs[fileIdx][0]) + "_" + str(evtfrecFileIDs[fileIdx][1]) + "_" + str(evtfrecFileIDs[fileIdx][2])
-                    if (fileIDname in filesDictionaryAccumTrain):
-                        filesDictionaryAccumTrain[fileIDname]+=1
-                    else:
-                        filesDictionaryAccumTrain[fileIDname]=1
-            duration = time.time() - startTime
-            durationSum += duration
-            assert not np.isnan(lossValue), 'Model diverged with loss = NaN'
+        if modelParams['writeWarpedImages']:
+            outputDIR = modelParams['warpedOutputFolder']+'/'
+            print("Using final training state to output processed tfrecords\noutput folder: ", outputDIR)
+            if tf.gfile.Exists(outputDIR):
+                tf.gfile.DeleteRecursively(outputDIR)
+            tf.gfile.MakeDirs(outputDIR)
+            lossValueSum = 0
+            stepsForOneDataRound = int((modelParams['numExamples']/modelParams['activeBatchSize']))
+            print('Warping %d images with batch size %d in %d steps' % (modelParams['numExamples'], modelParams['activeBatchSize'], stepsForOneDataRound))
+            
+            for step in xrange(modelParams['maxSteps']):
+                startTime = time.time()
+                #_, evtfrecFileIDs, lossValue, l2regValue, evImages, evPcls, evTargetT, evTargetP = sess.run([opTrain, tfrecFileIDs, loss, l2reg, images, pcls, targetT, targetP])
+                evtfrecFileIDs, lossValue, l2regValue, evImages, evPcls, evTargetT, evTargetP = sess.run([tfrecFileIDs, loss, l2reg, images, pcls, targetT, targetP])
+                for fileIdx in range(modelParams['activeBatchSize']):
+                        fileIDname = str(evtfrecFileIDs[fileIdx][0]) + "_" + str(evtfrecFileIDs[fileIdx][1]) + "_" + str(evtfrecFileIDs[fileIdx][2])
+                        if (fileIDname in filesDictionaryAccumTrain):
+                            filesDictionaryAccumTrain[fileIDname]+=1
+                        else:
+                            filesDictionaryAccumTrain[fileIDname]=1
+                duration = time.time() - startTime
+                durationSum += duration
+                assert not np.isnan(lossValue), 'Model diverged with loss = NaN'
+                
+                evPclA = evPcls[:,:,:,0]
+                evPclB = evPcls[:,:,:,1]
+                data_output.output(evImages, evPclA, evPclB, evTargetT, evTargetP, evtfrecFileIDs, **modelParams)
 
-            if step % FLAGS.printOutStep == 0:
-                numExamplesPerStep = modelParams['activeBatchSize']
-                examplesPerSec = numExamplesPerStep / duration
-                secPerBatch = float(duration)
-                format_str = ('%s: step %d, loss = %.2f, l2reg = %.2f, (%.1f examples/sec; %.3f '
-                              'sec/batch), loss/batch = %.2f')
-                logging.info(format_str % (datetime.now(), step, lossValue, l2regValue,
-                                           examplesPerSec, secPerBatch, lossValue/modelParams['activeBatchSize']))
+                if step % FLAGS.printOutStep == 0:
+                    numExamplesPerStep = modelParams['activeBatchSize']
+                    examplesPerSec = numExamplesPerStep / duration
+                    secPerBatch = float(duration)
+                    format_str = ('%s: step %d, loss = %.2f, l2reg = %.2f, (%.1f examples/sec; %.3f '
+                                  'sec/batch), loss/batch = %.2f')
+                    logging.info(format_str % (datetime.now(), step, lossValue, l2regValue,
+                                               examplesPerSec, secPerBatch, lossValue/modelParams['activeBatchSize']))
 
-            if step % FLAGS.summaryWriteStep == 0:
-                summaryStr = sess.run(summaryOp)
-                summaryWriter.add_summary(summaryStr, step)
+                ## Write train summary
+                #if step % FLAGS.summaryWriteStep == 0:
+                #    summaryStr = sess.run(summaryOp)
+                #    summaryWriter.add_summary(summaryStr, step)
+                ## Save the model checkpoint periodically.
+                #if step % FLAGS.modelCheckpointStep == 0 or (step + 1) == modelParams['maxSteps']:
+                #    checkpointPath = os.path.join(modelParams['trainLogDir'], 'model.ckpt')
+                #    saver.save(sess, checkpointPath, global_step=step)
 
-            # Save the model checkpoint periodically.
-            if step % FLAGS.modelCheckpointStep == 0 or (step + 1) == modelParams['maxSteps']:
-                checkpointPath = os.path.join(modelParams['trainLogDir'], 'model.ckpt')
-                saver.save(sess, checkpointPath, global_step=step)
-
-            # Print Progress Info
-            if ((step % FLAGS.ProgressStepReportStep) == 0) or ((step+1) == modelParams['maxSteps']):
-                print('Number of files used in training', len(filesDictionaryAccumTrain))
-                print('Progress: %.2f%%, Elapsed: %.2f mins, Training Completion in: %.2f mins --- %s' %
+                # Print Progress Info
+                if ((step % FLAGS.ProgressStepReportStep) == 0) or ((step+1) == modelParams['maxSteps']):
+                    print('Number of files used in training', len(filesDictionaryAccumTrain))
+                    print('Progress: %.2f%%, Elapsed: %.2f mins, Training Completion in: %.2f mins --- %s' %
                         (
                             (100*step)/modelParams['maxSteps'],
                             durationSum/60,
@@ -349,11 +365,12 @@ def train():
                             datetime.now()
                         )
                     )
-        print('Number of files used in training', len(filesDictionaryAccumTrain))
-        filesAccum = np.array(list(filesDictionaryAccumTrain.values()))
-        print('Access statistics for each file, mean max min std', np.mean(filesAccum), np.max(filesAccum), np.min(filesAccum), np.std(filesAccum))
+            print('Number of files used in training', len(filesDictionaryAccumTrain))
+            filesAccum = np.array(list(filesDictionaryAccumTrain.values()))
+            print('Access statistics for each file, mean max min std', np.mean(filesAccum), np.max(filesAccum), np.min(filesAccum), np.std(filesAccum))
 
-        print("\nTraining completed.....\n------------------------------\n------------------------------\n-------------------------------\n")
+        print("\Testing completed.....\n------------------------------\n------------------------------\n-------------------------------\n")
+
 
 def _setupLogging(logPath):
     # cleanup
@@ -387,13 +404,7 @@ def main(argv=None):  # pylint: disable=unused-argumDt
     #print('Test  Warp Output: %s' % modelParams['warpedTestDataDir'])
     print('')
     print('')
-    if input("(Overwrite WARNING) Did you change logs directory? ") not in ['yes', 'y']:
-        print("Please consider changing logs directory in order to avoid overwrite!")
-        return
-    if tf.gfile.Exists(modelParams['trainLogDir']):
-        tf.gfile.DeleteRecursively(modelParams['trainLogDir'])
-    tf.gfile.MakeDirs(modelParams['trainLogDir'])
-    train()
+    test()
 
 
 if __name__ == '__main__':

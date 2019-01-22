@@ -210,6 +210,6 @@ def inputs(**kwargs):
         
         if kwargs.get('usefp16'):
             batchImages = tf.cast(batchImages, tf.float16)
-            batchPclA = tf.cast(batchPcl, tf.float16)
+            batchPcl = tf.cast(batchPcl, tf.float16)
             batchTargetT = tf.cast(batchTargetT, tf.float16)
     return batchImages, batchPcl, batchTargetT, batchTFrecFileIDs

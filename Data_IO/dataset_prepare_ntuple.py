@@ -14,6 +14,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import csv
 
+# take log of unit quaternion 
+# q.unit # quaternion to unit
+# Quaternion.log(q) # log of quaternion
+# Quaternion.exp_map(10, Quaternion.log(q)).unit # log of quaternion converted to unit quaternion
+
+
+
 import struct
 from scipy import spatial
 
@@ -34,9 +41,15 @@ MIN_Z = 0.01
 MAX_Z = 100
 
 IMG_ROWS = 64  # makes image of 2x64 = 128
-IMG_COLS = 512
+IMG_COLS = 1024 #512
 PCL_COLS = 62074 # All PCL files should have rows
 PCL_ROWS = 3
+
+NUM_TUPLES = 3
+ID_SEQ_BASE = 100
+ID_SMP_BASE = 100000
+
+POSE_MODE = 'quaternion' # 'quaternion', 'euler', 'tmat'
 
 def image_process_subMean_divStd(img):
     out = img - np.mean(img)
@@ -181,8 +194,8 @@ def _make_image(depthview, rXYZ):
     depthview[0] = (depthview[0] - np.min(depthview[0]))/(np.max(depthview[0]) - np.min(depthview[0]))
     depthview[1] = (depthview[1] - np.min(depthview[1]))/(np.max(depthview[1]) - np.min(depthview[1]))
     # there roughly should be 64 height bins group them in 64 clusters
-    xHist, xBinEdges = np.histogram(depthview[0], 512)
-    yHist, yBinEdges = np.histogram(depthview[1], 64)
+    xHist, xBinEdges = np.histogram(depthview[0], IMG_COLS)
+    yHist, yBinEdges = np.histogram(depthview[1], 64) # there are only 64 rays for lidar
     xCent = np.ndarray(shape=xBinEdges.shape[0]-1)
     for i in range(0, xCent.shape[0]):
         xCent[i] = (xBinEdges[i]+xBinEdges[i+1])/2
@@ -190,9 +203,9 @@ def _make_image(depthview, rXYZ):
     for i in range(0, yCent.shape[0]):
         yCent[i] = (yBinEdges[i]+yBinEdges[i+1])/2
     # make image of size 128x512 : 64 -> 128 (double sampling the height)
-    depthImage = np.zeros(shape=[128, 512])
+    depthImage = np.zeros(shape=[IMG_ROWS, IMG_COLS])
     # normalize range values
-    #depthview[2] = (depthview[2]-np.min(depthview[2]))/(np.max(depthview[2])-np.min(depthview[2]))
+    #depthview[2] = (depthview[2]-np.10min(depthview[2]))/(np.max(depthview[2])-np.min(depthview[2]))
     depthview[2] = _normalize_Z_weighted(depthview[2])
     depthview[2] = 1-depthview[2]
     ### Remove maximas and minimas. -------------------------
@@ -203,10 +216,10 @@ def _make_image(depthview, rXYZ):
     for i in range(depthview.shape[1]-1, -1, -1): # traverse descending
         yidx = np.argmin(np.abs(yCent-depthview[1, idxs[i]]))
         xidx = np.argmin(np.abs(xCent-depthview[0, idxs[i]]))
-        # hieght is 2x64
-        yidx = yidx*2
+        if IMG_ROWS == 128: # hieght is 2x64
+            yidx = yidx*2
+            depthImage[yidx+1, xidx] = depthview[2, idxs[i]]
         depthImage[yidx, xidx] = depthview[2, idxs[i]]
-        depthImage[yidx+1, xidx] = depthview[2, idxs[i]]
     return depthImage
 def get_depth_image_pano_pclView(xyzi, height=1.6):
     '''
@@ -237,95 +250,29 @@ def get_depth_image_pano_pclView(xyzi, height=1.6):
     depthImage = _make_image(pclview, rPclview)
     pclview = _zero_pad(pclview, PCL_COLS-pclview.shape[1])
     return depthImage, pclview
+
 ################################
-def transform_pcl_2_origin(xyzi_col, tMat2o):
-    '''
-    pointcloud i, and tMat2o i to origin
-    '''
-    intensity_col = xyzi_col[3]
-    xyz1 = xyzi_col.copy()
-    xyz1[3] *= 0
-    xyz1[3] += 1
-    xyz1 = np.matmul(tMat2o, xyz1)
-    xyz1[3] = intensity_col
-    return xyz1
-################################
-def _get_tMat_A_2_B(tMatA2o, tMatB2o):
-    '''
-    tMatA2o A -> O (source pcl is in A), tMatB2o B -> O (target pcl will be in B)
-    return tMat A -> B
-    '''
-    # tMatA2o: A -> Orig
-    # tMatB2o: B -> Orig ==> inv(tMatB2o): Orig -> B
-    # inv(tMatB2o) * tMatA2o : A -> B
-    tMatA2o = np.append(tMatA2o, [[0, 0, 0, 1]], axis=0)
-    tMatB2o = np.append(tMatB2o, [[0, 0, 0, 1]], axis=0)
-    tMatA2B = np.matmul(np.linalg.inv(tMatB2o), tMatA2o)
-    tMatA2B = np.delete(tMatA2B, tMatA2B.shape[0]-1, 0)
-    return tMatA2B
-def _get_tMat_B_2_A(tMatA2o, tMatB2o):
-    '''
-    tMatA2o A -> O (pcl is in A), tMatB2o B -> O (pcl will be in B)
-    return tMat B -> A
-    '''
-    # tMatA2o: A -> Orig ==> inv(tMatA2o): Orig -> A
-    # tMatB2o: B -> Orig 
-    # inv(tMatA2o) * tMatB2o : B -> A
-    tMatA2o = np.append(tMatA2o, [[0, 0, 0, 1]], axis=0)
-    tMatB2o = np.append(tMatB2o, [[0, 0, 0, 1]], axis=0)
-    tMatB2A = np.matmul(np.linalg.inv(tMatA2o), tMatB2o)
-    tMatB2A = np.delete(tMatB2A, tMatB2A.shape[0]-1, 0)
-    return tMatB2A
+def is_orth(pose):
+    # I have overwritten the "/usr/local/lib/python3.6/dist-packages/pyquaternion/quaternion.py"
+    # line 177 to round to decimals of 3, as follows
+    if (np.allclose( np.round(np.dot(pose, pose.conj().transpose()), decimals=3), np.eye(3))):
+        return True
+    return False
 
-def _get_tMat_B_2_O(tMatA2o, tMatA2B):
-    '''
-    tMatA2o A -> O (target pcl will be in O), tMatA2B A -> B (source pcl is in B)
-    return tMat B -> O
-    '''
-    # tMatA2o: A -> Orig
-    # tMatA2B: A -> B ==> inv(tMatA2B): B -> A
-    # tMatA2o * inv(tMatA2B) : B -> O
-    tMatA2o = np.append(tMatA2o, [[0, 0, 0, 1]], axis=0)
-    tMatA2B = np.append(tMatA2B, [[0, 0, 0, 1]], axis=0)
-    tMatB2o = np.matmul(tMatA2o, np.linalg.inv(tMatA2B))
-    tMatB2o = np.delete(tMatB2o, tMatB2o.shape[0]-1, 0)
-    return tMatB2o
-
-def _get_3x4_tmat(poseRow):
-    return poseRow.reshape([3,4])
-def _get_pcl_XYZ(filePath):
-    '''
-    Get a bin file address and read it into a numpy matrix
-    Converting LiDAR coordinate system to Camera coordinate system for pose transform
-    '''
-    f = open(filePath, 'rb')
-    i = 0
-    j = 0
-    pclpoints = list()
-    # Camera: x = right, y = down, z = forward
-    # Velodyne: x = forward, y = left, z = up
-    # GPS/IMU: x = forward, y = left, z = up
-    # Velodyne -> Camera (transformation matrix is in camera order)
-    #print('Reading X = -y,         Y = -z,      Z = x,     i = 3')
-    #               0 = left/right, 1 = up/down, 2 = in/out
-    while f.readable():
-        xyzi = f.read(4*4)
-        if len(xyzi) == 16:
-            row = struct.unpack('f'*4, xyzi)
-            if j%1 == 0:
-                pclpoints.append([-1*row[1], -1*row[2], row[0]]) # row[3] is intensity and not used
-                i += 1
-        else:
-            #print('num pclpoints =', i)
-            break
-        j += 1
-        #if i == 15000:
-        #    break
-    f.close()
-    # convert to numpy
-    xyzi = np.array(pclpoints, dtype=np.float32)
-    return xyzi.transpose()
-
+def assert_orthogonality(poseAo, poseBo, poseBA, idx):
+    stop = False
+    if not is_orth(poseAo[:,0:3]):
+        print('poseAo is not orth')
+        stop = True
+    if not is_orth(poseBo[:,0:3]):
+        print('poseBo is not orth')
+        stop = True
+    if not is_orth(poseBA[:,0:3]):
+        print('poseBA is not orth')
+        stop = True
+    if stop:
+        raise ValueError('--- STOP index', idx)
+    return    
 
 
 def process_dataset(startTime, durationSum, pclFolderList, seqIDs, pclFilenamesList, poseFileList, tfRecFolder,  numTuples, i):
@@ -343,61 +290,85 @@ def process_dataset(startTime, durationSum, pclFolderList, seqIDs, pclFilenamesL
     use them to train the network
     '''
     seqID = seqIDs[i]
-    print("SeqID started : ", seqID)
+    timer = time.time()
 
     pclFolder = pclFolderList[i]
     pclFilenames = pclFilenamesList[i]
     poseFile = poseFileList[i]
-
+    
+    print("filenames # ", len(pclFilenames))
+    print("poseFiles # ", len(poseFile))
+    print("SeqID", seqID, ": start - 0 s - ", len(pclFilenames))
+    
     xyziList = list()
     imgDepthList = list()
     poseB2AList = list()
     poseX20List = list()
     # pop the first in Tuples and append last as numTuple
-    for j in range(numTuples-1, len(pclFilenames)-1):
+    for j in range(numTuples-1, len(pclFilenames)):
         if (j == numTuples-1):
             # get 0
-            xyzi = _get_pcl_XYZ(pclFolder + pclFilenames[0])
+            xyzi = kitti._get_pcl_XYZ(pclFolder + pclFilenames[0])
             imgDepth, xyzi = get_depth_image_pano_pclView(xyzi)
             xyziList.append(xyzi)
             imgDepthList.append(imgDepth)
-            poseX20List.append(_get_3x4_tmat(poseFile[0]))
+            poseX20List.append(kitti._get_3x4_tmat(poseFile[0]))
             # read rest numTuples once
             for i in range(1, numTuples):
-                xyzi = _get_pcl_XYZ(pclFolder + pclFilenames[i])
+                xyzi = kitti._get_pcl_XYZ(pclFolder + pclFilenames[i])
                 imgDepth, xyzi = get_depth_image_pano_pclView(xyzi)
                 xyziList.append(xyzi)
                 imgDepthList.append(imgDepth)
-                poseX20List.append(_get_3x4_tmat(poseFile[i]))
-                # get target pose  B->A also changes to abgxyz : get abgxyzb-abgxyza
-                pose_B2A = _get_tMat_B_2_A(poseX20List[i-1], poseX20List[i])
-                abgxyzB2A = kitti._get_params_from_tmat(pose_B2A)
+                poseX20List.append(kitti._get_3x4_tmat(poseFile[i]))
+                # get target pose B->A also changes to abgxyz : get abgxyzb-abgxyza
+                pose_B2A = kitti._get_tMat_B_2_A(poseX20List[i-1], poseX20List[i])
+                assert_orthogonality(poseX20List[i-1], poseX20List[i], pose_B2A, i)
+                abgxyzB2A = kitti.get_training_pose(pose_B2A, POSE_MODE)
                 poseB2AList.append(abgxyzB2A)
+            b2aquat = [list(abgxyzB2A)]
+            b2aeuler = [list(kitti.get_training_pose(pose_B2A, 'euler'))]
         else:
             xyziList.pop(0)
             imgDepthList.pop(0)
             poseB2AList.pop(0)
             poseX20List.pop(0)
             # get i
-            xyzi = _get_pcl_XYZ(pclFolder + pclFilenames[j])
+            xyzi = kitti._get_pcl_XYZ(pclFolder + pclFilenames[j])
             imgDepth, xyzi = get_depth_image_pano_pclView(xyzi)
             xyziList.append(xyzi)
             imgDepthList.append(imgDepth)
-            poseX20List.append(_get_3x4_tmat(poseFile[j]))
+            poseX20List.append(kitti._get_3x4_tmat(poseFile[j]))
             # get target pose  B->A also changes to abgxyz : get abgxyzb-abgxyza
-            pose_B2A = _get_tMat_B_2_A(poseX20List[numTuples-2], poseX20List[numTuples-1])
-            abgxyzB2A = kitti._get_params_from_tmat(pose_B2A)
+            pose_B2A = kitti._get_tMat_B_2_A(poseX20List[numTuples-2], poseX20List[numTuples-1])
+            assert_orthogonality(poseX20List[numTuples-2], poseX20List[numTuples-1], pose_B2A, j)
+            abgxyzB2A = kitti.get_training_pose(pose_B2A, POSE_MODE)
+            #b2aquat.append(list(abgxyzB2A))
+            #print(kitti.get_training_pose(pose_B2A, POSE_MODE))
+            #b2aeuler.append(list(kitti.get_training_pose(pose_B2A, 'euler')))
+            #print(b2aeuler)
+            #print('-----')
             poseB2AList.append(abgxyzB2A)
-
-        #
-        fileID = [int(seqID)+100, (j-(numTuples-1))+100000, j+100000]
+        fileID = [int(seqID)+ID_SEQ_BASE, (j-(numTuples-1))+ID_SMP_BASE, j+ID_SMP_BASE]
         odometery_writer(fileID,# 3 ints
                          xyziList,# ntuplex3xPCL_COLS
                          imgDepthList,# ntuplex128x512
                          poseB2AList,# (ntuple-1)x6
                          tfRecFolder,
                          numTuples)
-    print("SeqID completed : ", seqID)
+        if np.round((100*j)/len(pclFilenames)) > np.round((100*(j-1))/len(pclFilenames)):
+            print("seqID", seqID, ":", np.round((100*j)/len(pclFilenames), decimals=2), "% -", np.round(time.time()-timer, decimals=2), 's - #', j)
+    #b2aeuler = np.array(b2aeuler)
+    #b2aquat = np.array(b2aquat)
+    ##plt.plot(b2aeuler[:,0]) # qt3
+    ##plt.plot(b2aeuler[:,1]) # Turn around Y -> heading
+    ##plt.plot(b2aeuler[:,2]) # qt1
+    #plt.plot(b2aquat[:,1]) # eu2
+    #plt.plot(b2aquat[:,2]) # Turn around Y -> heading
+    #plt.plot(b2aquat[:,3]) # eu0
+    #plt.legend(['0','1','2']) 
+    #plt.show()
+    print("seqID", seqID, ": complete -", np.round(time.time()-timer, decimals=2), 's')
+    print(j)
     return
 ################################
 def _get_pose_data(posePath):
@@ -433,9 +404,9 @@ def prepare_dataset(datasetType, pclFolder, poseFolder, seqIDs, tfRecFolder, num
     print("Starting datawrite")
     startTime = time.time()
     num_cores = multiprocessing.cpu_count() - 2
-    #for j in range(0,len(pclFilenames)-numTuples):
-    #    process_dataset(startTime, durationSum, pclFolderPath, seqIDs[i], pclFilenames, poseFile, tfRecFolder, numTuples, j)
-    Parallel(n_jobs=num_cores)(delayed(process_dataset)(startTime, durationSum, pclFolderPathList, seqIDs, pclFilenamesList, poseFileList, tfRecFolder, numTuples, j) for j in range(0,len(seqIDs)))
+    for j in range(0,len(seqIDs)):
+        process_dataset(startTime, durationSum, pclFolderPathList, seqIDs, pclFilenamesList, poseFileList, tfRecFolder, numTuples, j)
+    #Parallel(n_jobs=num_cores)(delayed(process_dataset)(startTime, durationSum, pclFolderPathList, seqIDs, pclFilenamesList, poseFileList, tfRecFolder, numTuples, j) for j in range(0,len(seqIDs)))
     #for i in range(0,len(pclFilenames)-numTuples):
     #    print(shapes[i])
 
@@ -504,7 +475,7 @@ def prepare_dataset(datasetType, pclFolder, poseFolder, seqIDs, tfRecFolder, num
 ### 
 ### def process_maxmins(startTime, durationSum, pclFolder, pclFilenames, poseFile, i):
 ###     # get i
-###     xyzi_A = _get_pcl_XYZ(pclFolder + pclFilenames[i])
+###     xyzi_A = kitti._get_pcl_XYZ(pclFolder + pclFilenames[i])
 ###     pose_Ao = _get_correct_tmat(poseFile[i])
 ###     xmin, xmax, ymin, ymax = get_max_mins_pclView(xyzi_A)
 ###     return xmin, xmax, ymin, ymax
@@ -578,7 +549,7 @@ def prepare_dataset(datasetType, pclFolder, poseFolder, seqIDs, tfRecFolder, num
 ### 
 ### def process_pclmaxs(startTime, durationSum, pclFolder, pclFilenames, poseFile, i):
 ###     # get i
-###     xyzi_A = _get_pcl_XYZ(pclFolder + pclFilenames[i])
+###     xyzi_A = kitti._get_pcl_XYZ(pclFolder + pclFilenames[i])
 ###     pose_Ao = _get_correct_tmat(poseFile[i])
 ###     pclmax = get_max_pclrows(xyzi_A)
 ###     return pclmax
@@ -610,8 +581,8 @@ posePath = '../Data/kitti/poses/'
 seqIDtrain = ['00', '01', '02', '03', '04', '05', '06', '07', '08']#['00', '01', '02', '03', '04', '05', '06', '07', '08']
 seqIDtest = ['09', '10']
 
-traintfRecordFLD = "../Data/kitti/train_tfrecords_5tuple/"
-testtfRecordFLD = "../Data/kitti/test_tfrecords_5tuple/"
+traintfRecordFLD = "../Data/kitti/train_tfrec_"+str(NUM_TUPLES)+"/"
+testtfRecordFLD = "../Data/kitti/test_tfrec_"+str(NUM_TUPLES)+"/"
 
 ##def main():
 #    #find_max_mins("train", pclPath, posePath, seqIDtrain)
@@ -635,5 +606,5 @@ testtfRecordFLD = "../Data/kitti/test_tfrecords_5tuple/"
 _set_folders(traintfRecordFLD)
 _set_folders(testtfRecordFLD)
 
-prepare_dataset("train", pclPath, posePath, seqIDtrain, traintfRecordFLD, numTuples=5)
-prepare_dataset("test", pclPath, posePath, seqIDtest, testtfRecordFLD, numTuples=5)
+prepare_dataset("train", pclPath, posePath, seqIDtrain, traintfRecordFLD, numTuples=NUM_TUPLES)
+prepare_dataset("test", pclPath, posePath, seqIDtest, testtfRecordFLD, numTuples=NUM_TUPLES)

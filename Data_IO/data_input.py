@@ -197,6 +197,7 @@ def fetch_inputs(numPreprocessThreads=None, numReaders=1, **kwargs):
                                                                     capacity=2*numPreprocessThreads*kwargs.get('activeBatchSize'))
         batchImages = tf.cast(batchImages, tf.float32)
         # Display the training images in the visualizer.
+        print(images.get_shape())
         images = tf.unstack(batchImages, kwargs.get('imageDepthChannels'), axis=3)
         for i in range(kwargs.get('imageDepthChannels')):
             tf.summary.image('images_'+str(i)+'_', images[i])

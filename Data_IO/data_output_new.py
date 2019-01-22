@@ -36,7 +36,7 @@ def _apply_prediction_tmat(pclA, targetT, targetP, **kwargs):
     tMatP = kitti._get_tmat_from_params(targetP) 
     pclATransformed = kitti.transform_pcl(pclA, tMatP)
     # get new depth image of transformed pclA
-    depthImageA, _ = kitti.get_depth_image_pano_pclView(pclATransformed)
+    depthImageA, _ = kitti.get_depth_image_pano_pclView(pclATransformed, **kwargs)
     pclATransformed = kitti._zero_pad(pclATransformed, kwargs.get('pclCols')-pclATransformed.shape[1])
     # get residual Target
     tMatT = kitti._get_tmat_from_params(targetT) 
@@ -52,19 +52,24 @@ def _apply_prediction_periodic(pclA, targetT, targetP, **kwargs):
         - New targetT
         - New depthImage
     '''
+    # targetT Shape Assertion
+    targetT = np.reshape(targetT, [targetT.shape[0]]) 
     # remove trailing zeros
     pclA = kitti.remove_trailing_zeros(pclA)
     # get transformed pclA based on targetP
     tMatP = kitti._get_tmat_from_params(targetP) 
     pclATransformed = kitti.transform_pcl(pclA, tMatP)
     # get new depth image of transformed pclA
-    depthImageA, _ = kitti.get_depth_image_pano_pclView(pclATransformed)
+    depthImageA, _ = kitti.get_depth_image_pano_pclView(pclATransformed, **kwargs)
     pclATransformed = kitti._zero_pad(pclATransformed, kwargs.get('pclCols')-pclATransformed.shape[1])
     # get residual Target
     #tMatResA2B = kitti.get_residual_tMat_A2B(targetT, targetP)
     targetP[0] = targetP[0]%np.pi
     targetP[1] = targetP[1]%np.pi
     targetP[2] = targetP[2]%np.pi
+    targetT[0] = targetT[0]%np.pi
+    targetT[1] = targetT[1]%np.pi
+    targetT[2] = targetT[2]%np.pi
     targetResP2T = targetT - targetP
     return pclATransformed, targetResP2T, depthImageA
 
@@ -82,7 +87,7 @@ def _apply_prediction(pclA, targetT, targetP, **kwargs):
     tMatP = kitti._get_tmat_from_params(targetP) 
     pclATransformed = kitti.transform_pcl(pclA, tMatP)
     # get new depth image of transformed pclA
-    depthImageA, _ = kitti.get_depth_image_pano_pclView(pclATransformed)
+    depthImageA, _ = kitti.get_depth_image_pano_pclView(pclATransformed, **kwargs)
     pclATransformed = kitti._zero_pad(pclATransformed, kwargs.get('pclCols')-pclATransformed.shape[1])
     # get residual Target
     #tMatResA2B = kitti.get_residual_tMat_A2B(targetT, targetP)
@@ -102,14 +107,14 @@ def output(batchImages, batchPclA, batchPclB, bargetT, targetP, batchTFrecFileID
     """
     num_cores = multiprocessing.cpu_count() - 2
     ## Output for 2 images A and B as in batch
-#    Parallel(n_jobs=num_cores)(delayed(output_loop)(batchImages, batchPclA, batchPclB, bargetT, targetP, batchTFrecFileIDs, i, **kwargs) for i in range(kwargs.get('activeBatchSize')))
+    #Parallel(n_jobs=num_cores)(delayed(output_loop)(batchImages, batchPclA, batchPclB, bargetT, targetP, batchTFrecFileIDs, i, **kwargs) for i in range(kwargs.get('activeBatchSize')))
     ## Output for 3 images A, Diff, and B as in batch
-    Parallel(n_jobs=num_cores)(delayed(output_loop_diff)(batchImages, batchPclA, batchPclB, bargetT, targetP, batchTFrecFileIDs, i, **kwargs) for i in range(kwargs.get('activeBatchSize')))
-    #for i in range(kwargs.get('activeBatchSize')):
-    #    output_loop(batchImages, batchPclA, batchPclB, bargetT, targetP, batchTFrecFileIDs, i, **kwargs)
+    #Parallel(n_jobs=num_cores)(delayed(output_loop_diff)(batchImages, batchPclA, batchPclB, bargetT, targetP, batchTFrecFileIDs, i, **kwargs) for i in range(kwargs.get('activeBatchSize')))
+    for i in range(kwargs.get('activeBatchSize')):
+        output_loop(batchImages, batchPclA, batchPclB, bargetT, targetP, batchTFrecFileIDs, i, **kwargs)
     return
 
-def output_loop(batchImages, batchPclA, batchPclB, bargetT, targetP, batchTFrecFileIDs, i, **kwargs):
+def output_loop(batchImages, batchPclA, batchPclB, targetT, targetP, batchTFrecFileIDs, i, **kwargs):
     """
     TODO: SIMILAR TO DATA INPUT -> WE NEED A QUEUE RUNNER TO WRITE THIS OFF TO BE FASTER
 
@@ -120,26 +125,26 @@ def output_loop(batchImages, batchPclA, batchPclB, bargetT, targetP, batchTFrecF
     Raises:
       ValueError: If no dataDir
     """
-    # split for depth dimension
-    depthA, depthB = np.asarray(np.split(batchImages[i], 2, axis=2))
-    depthB = depthB.reshape(kwargs.get('imageDepthRows'), kwargs.get('imageDepthCols'))
-    pclATransformed, targetRes, depthATransformed = _apply_prediction_periodic(batchPclA[i], bargetT[i], targetP[i], **kwargs)
-    # Write each Tensorflow record
-    filename = str(batchTFrecFileIDs[i][0]) + "_" + str(batchTFrecFileIDs[i][1]) + "_" + str(batchTFrecFileIDs[i][2])
-    tfrecord_io.tfrecord_writer(batchTFrecFileIDs[i],
-                                pclATransformed, batchPclB[i],
-                                depthATransformed, depthB,
-                                targetRes,
-                              
-       kwargs.get('warpedOutputFolder')+'/', filename)
-    if kwargs.get('phase') == 'train':
-        folderTmat = kwargs.get('tMatTrainDir')
-    else:
-        folderTmat = kwargs.get('tMatTestDir')
-    write_predictions(batchTFrecFileIDs[i], targetP[i], folderTmat)
+    ## split for depth dimension
+    #depthA, depthB = np.asarray(np.split(batchImages[i], 2, axis=2))
+    #depthB = depthB.reshape(kwargs.get('imageDepthRows'), kwargs.get('imageDepthCols'))
+    #pclATransformed, targetRes, depthATransformed = _apply_prediction_periodic(batchPclA[i], targetT[i], targetP[i], **kwargs)
+    ## Write each Tensorflow record
+    #filename = str(batchTFrecFileIDs[i][0]) + "_" + str(batchTFrecFileIDs[i][1]) + "_" + str(batchTFrecFileIDs[i][2])
+    #pcls = np.stack([pclATransformed, batchPclB[i]], axis=2)
+    #imgsDepth = np.stack([depthATransformed, depthB], axis=2)
+    #tfrecord_io.tfrecord_writer_ntuple(batchTFrecFileIDs[i],
+    #                                   pcls, 
+    #                                   imgsDepth, 
+    #                                   targetRes, 
+    #                                   kwargs.get('warpedOutputFolder')+'/', 
+    #                                   kwargs.get('numParallelModules'), 
+    #                                   filename)
+    folderTmat = kwargs.get('tmatOutputDir')
+    write_predictions(batchTFrecFileIDs[i], targetP[i], targetT[i], folderTmat)
     return
 
-def output_loop_diff(batchImages, batchPclA, batchPclB, bargetT, targetP, batchTFrecFileIDs, i, **kwargs):
+def output_loop_diff(batchImages, batchPclA, batchPclB, targetT, targetP, batchTFrecFileIDs, i, **kwargs):
     """
     TODO: SIMILAR TO DATA INPUT -> WE NEED A QUEUE RUNNER TO WRITE THIS OFF TO BE FASTER
 
@@ -153,20 +158,17 @@ def output_loop_diff(batchImages, batchPclA, batchPclB, bargetT, targetP, batchT
     # split for depth dimension
     depthA, depthDiff, depthB = np.asarray(np.split(batchImages[i], 3, axis=2))
     depthB = depthB.reshape(kwargs.get('imageDepthRows'), kwargs.get('imageDepthCols'))
-    pclATransformed, targetRes, depthATransformed = _apply_prediction(batchPclA[i], bargetT[i], targetP[i], **kwargs)
+    pclATransformed, targetRes, depthATransformed = _apply_prediction(batchPclA[i], targetT[i], targetP[i], **kwargs)
     # Write each Tensorflow record
     filename = str(batchTFrecFileIDs[i][0]) + "_" + str(batchTFrecFileIDs[i][1]) + "_" + str(batchTFrecFileIDs[i][2])
     tfrecord_io.tfrecord_writer(batchTFrecFileIDs[i],
                                 pclATransformed, batchPclB[i],
                                 depthATransformed, depthB,
                                 targetRes,
-                              
-       kwargs.get('warpedOutputFolder')+'/', filename)
-    if kwargs.get('phase') == 'train':
-        folderTmat = kwargs.get('tMatTrainDir')
-    else:
-        folderTmat = kwargs.get('tMatTestDir')
-    write_predictions(batchTFrecFileIDs[i], targetP[i], folderTmat)
+                                kwargs.get('warpedOutputFolder')+'/', 
+                                filename)
+    folderTmat = kwargs.get('tmatOutputDir')
+    write_predictions(batchTFrecFileIDs[i], targetP[i], targetT[i], folderTmat)
     return
 
 def write_json_file(filename, datafile):
@@ -179,7 +181,7 @@ def _set_folders(folderPath):
     if not os.path.exists(folderPath):
         os.makedirs(folderPath)
 
-def write_predictions(tfrecID, targetP, folderOut):
+def write_predictions(tfrecID, pred, target, folderOut):
     """
     Write prediction outputs to generate path map
     """
@@ -187,6 +189,7 @@ def write_predictions(tfrecID, targetP, folderOut):
     dataJson = {'seq' : tfrecID[0].tolist(),
                 'idx' : tfrecID[1].tolist(),
                 'idxNext' : tfrecID[2].tolist(),
-                'tmat' : targetP.tolist()}
+                'pred' : pred.tolist(),
+                'target' : target.tolist()}
     write_json_file(folderOut + '/' + str(tfrecID[0]) + '_' + str(tfrecID[1]) + '_' + str(tfrecID[2]) +'.json', dataJson)
     return

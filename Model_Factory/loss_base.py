@@ -135,7 +135,36 @@ def _weighted_params_L2_loss(targetP, targetT, activeBatchSize, outputSize=6, be
     targetP = tf.multiply(targetP, mask)
     targetT = tf.multiply(targetT, mask)
     return tf.add(_l2_loss(targetP, targetT), betareg*l2reg, name='loss_w_l2_params')
-    
+
+def _weighted_params_3t_L2_loss(targetP, targetT, activeBatchSize, outputSize=6, betareg=0, l2reg=0):
+    '''
+    Input:
+        targetP: [batchsize, parametersize, tuplesize] #in this case tuplesize=2
+        targetT: [batchsize, parametersize, tuplesize] #in this case tuplesize=2
+    Output:
+        [l2(pBA, tBA)] + [l2(pCB, tCB)] + [l2((pBA^2 + pCB^2), (tBA^2 + tCB^2))] + betareg*l2reg
+    '''
+    # Alpha, Beta, Gamma are -Pi to Pi periodic radians - mod over pi to remove periodicity
+    ######## targetP, targetT shape Assertion
+
+    # Importance weigting on angles as they have smaller values
+    if outputSize == 6: # euler parametric
+        mask = np.array([[100, 100, 100, 1, 1, 1]], dtype=np.float32)
+    elif outputSize == 7: #quaternion parametric
+        #mask = np.array([[1000, 1000, 1000, 1000, 1, 1, 1]], dtype=np.float32)
+        mask = np.array([[100, 1000000, 1000000, 1000000, 1, 1, 1]], dtype=np.float32)
+    else:
+        raise ValueError("Not [Euler, Quaternion] ouput!!! --- check the target output size and nature")
+    #mask = np.array([[1000, 1000, 1000, 100, 100, 100]], dtype=np.float32)
+    mask = np.repeat(mask, activeBatchSize, axis=0)
+    targetP[:, : , :, 0] = tf.multiply(targetP[:, :, :, 0], mask)
+    targetP[:, : , :, 1] = tf.multiply(targetP[:, :, :, 1], mask)
+    targetT[:, : , :, 0] = tf.multiply(targetT[:, :, :, 0], mask)
+    targetT[:, : , :, 1] = tf.multiply(targetT[:, :, :, 1], mask)
+    return tf.add(tf.add(tf.add(_l2_loss(targetP[:, :, :, 0], targetT[:, :, :, 0]), _l2_loss(targetP[:, :, :, 1], targetT[:, :, :, 1])),
+                         _l2_loss(tf.add(targetP[:, :, :, 0], targetP[:, :, :, 1]), tf.add(targetT[:, :, :, 0], targetT[:, :, :, 1]))),
+                  betareg*l2reg,
+                  name='loss_w_3t_l2_params')
 
 def _weighted_params_L2_loss_nTuple_last(targetP, targetT, nTuple, activeBatchSize):
     # Alpha, Beta, Gamma are -Pi to Pi periodic radians - mod over pi to remove periodicity
@@ -307,6 +336,8 @@ def loss_l2reg(pred, tval, l2reg, **kwargs):
     lossFunction = kwargs.get('lossFunction')
     if lossFunction == 'Weighted_Params_L2_l2reg':
         return _weighted_params_L2_loss(pred, tval, kwargs.get('activeBatchSize'), kwargs.get('outputSize'), 0.01, l2reg)
+    if lossFunction == 'Weighted_Params_3t_L2_l2reg':
+        return _weighted_params_3t_L2_loss(pred, tval, kwargs.get('activeBatchSize'), kwargs.get('outputSize'), 0.01, l2reg)
     elif lossFunction == 'clsf_smce_l2reg':
         return _clsf_smce_l2reg(pred, tval, 0.1, l2reg) #0.01
     elif lossFunction == 'clsf_ohem_l2reg':

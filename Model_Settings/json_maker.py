@@ -158,6 +158,7 @@ def write_iterative():
     itr_170808_ITR_B_inception_n5tuple(reCompileITR, trainLogDirBase, testLogDirBase)
     itr_190101(reCompileITR, trainLogDirBase, testLogDirBase)
     itr_190102(reCompileITR, trainLogDirBase, testLogDirBase)
+    itr_190122(reCompileITR, trainLogDirBase, testLogDirBase)
     ##############
     ##############
     ##############
@@ -971,6 +972,94 @@ def itr_190102(reCompileITR, trainLogDirBase, testLogDirBase):
         data['imageDepthChannels'] = 2
         data['trainMaxSteps'] = 150000
         data['lossFunction'] = 'Weighted_Params_L2_l2reg'
+        data['optimizer'] = 'AdaGrad' # AdamOptimizer MomentumOptimizer GradientDescentOptimizer AdaGrad
+        #data['initialLearningRate'] = 0.003
+        #data['learningRateDecayFactor'] = 0.7 # very fast convergence and then stays almost similar
+        data['initialLearningRate'] = 0.001
+        data['learningRateDecayFactor'] = 0.7
+        data['outputSize'] = 7 # 4 quat 3 dxyz
+        ####################  0    1    2    3 -  4    5    6    7 -   8     9
+        data['modelShape'] = [64, 64, 128, 128, 256, 256, 512, 512, 1024, 512]
+        data['trainBatchSize'] = 32
+        data['testBatchSize'] = 32
+        runNameBase = '190102_ITR_B_'
+        ### ITERATION 1
+        runName = runNameBase+'1'
+        data['trainDataDir'] = '../Data/kitti/train_tfrec_'+str(data['numParallelModules'])
+        data['testDataDir'] = '../Data/kitti/test_tfrec_'+str(data['numParallelModules'])
+        data['trainLogDir'] = trainLogDirBase + runName
+        data['testLogDir'] = testLogDirBase + runName
+        data['warpedTrainDataDir'] = warpedTrainDirBase + runName
+        data['warpedTestDataDir'] = warpedTestDirBase+ runName
+        _set_folders(data['warpedTrainDataDir'])
+        _set_folders(data['warpedTestDataDir'])
+        data['tMatTrainDir'] = data['trainLogDir']+'/target'
+        data['tMatTestDir'] = data['testLogDir']+'/target'
+        _set_folders(data['tMatTrainDir'])
+        _set_folders(data['tMatTestDir'])
+        data['warpOriginalImage'] = True
+        data['batchNorm'] = True
+        data['weightNorm'] = False
+        write_json_file(runName+'.json', data)
+        ### ITERATION 2
+        runName = runNameBase+'2'
+        data['trainDataDir'] = data['warpedTrainDataDir'] # from previous iteration
+        data['testDataDir'] = data['warpedTestDataDir'] # from previous iteration
+        data['trainLogDir'] = trainLogDirBase + runName
+        data['testLogDir'] = testLogDirBase + runName
+        data['warpedTrainDataDir'] = warpedTrainDirBase + runName
+        data['warpedTestDataDir'] = warpedTestDirBase+ runName
+        _set_folders(data['warpedTrainDataDir'])
+        _set_folders(data['warpedTestDataDir'])
+        data['tMatTrainDir'] = data['trainLogDir']+'/target'
+        data['tMatTestDir'] = data['testLogDir']+'/target'
+        _set_folders(data['tMatTrainDir'])
+        _set_folders(data['tMatTestDir'])
+        data['batchNorm'] = True
+        data['weightNorm'] = False
+        write_json_file(runName+'.json', data)
+        ### ITERATION 3
+        runName = runNameBase+'3'
+        data['trainDataDir'] = data['warpedTrainDataDir'] # from previous iteration
+        data['testDataDir'] = data['warpedTestDataDir'] # from previous iteration
+        data['trainLogDir'] = trainLogDirBase + runName
+        data['testLogDir'] = testLogDirBase + runName
+        data['warpedTrainDataDir'] = warpedTrainDirBase + runName
+        data['warpedTestDataDir'] = warpedTestDirBase+ runName
+        _set_folders(data['warpedTrainDataDir'])
+        _set_folders(data['warpedTestDataDir'])
+        data['tMatTrainDir'] = data['trainLogDir']+'/target'
+        data['tMatTestDir'] = data['testLogDir']+'/target'
+        _set_folders(data['tMatTrainDir'])
+        _set_folders(data['tMatTestDir'])
+        data['batchNorm'] = True
+        data['weightNorm'] = False
+        write_json_file(runName+'.json', data)
+        ### ITERATION 4
+        runName = runNameBase+'4'
+        data['trainDataDir'] = data['warpedTrainDataDir'] # from previous iteration
+        data['testDataDir'] = data['warpedTestDataDir'] # from previous iteration
+        data['trainLogDir'] = trainLogDirBase + runName
+        data['testLogDir'] = testLogDirBase + runName
+        data['warpedTrainDataDir'] = warpedTrainDirBase + runName
+        data['warpedTestDataDir'] = warpedTestDirBase+ runName
+        _set_folders(data['warpedTrainDataDir'])
+        _set_folders(data['warpedTestDataDir'])
+        data['tMatTrainDir'] = data['trainLogDir']+'/target'
+        data['tMatTestDir'] = data['testLogDir']+'/target'
+        _set_folders(data['tMatTrainDir'])
+        _set_folders(data['tMatTestDir'])
+        data['batchNorm'] = True
+        data['weightNorm'] = False
+        write_json_file(runName+'.json', data)
+
+def itr_190122(reCompileITR, trainLogDirBase, testLogDirBase):
+    if reCompileITR:
+        data['modelName'] = 'cnn_190122'
+        data['numParallelModules'] = 3
+        data['imageDepthChannels'] = 3
+        data['trainMaxSteps'] = 150000
+        data['lossFunction'] = 'Weighted_Params_3t_L2_l2reg'
         data['optimizer'] = 'AdaGrad' # AdamOptimizer MomentumOptimizer GradientDescentOptimizer AdaGrad
         #data['initialLearningRate'] = 0.003
         #data['learningRateDecayFactor'] = 0.7 # very fast convergence and then stays almost similar

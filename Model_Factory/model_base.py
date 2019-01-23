@@ -210,7 +210,7 @@ def twin_correlation_simple(name, prevLayerOut, prevLayerDim, **kwargs):
     #return resultTensor
     return resultBatch, 
 
-def conv_fire_parallel_residual_module(name, prevLayerOut, prevLayerDim, historicLayerOut, historicLayerDim, fireDimsSingleModule, wd=None, **kwargs):
+def conv_fire_parallel_residual_module(name, prevLayerOut, prevLayerDim, historicLayerOut, historicLayerDim, fireDimsSingleModule, numParallelModules, wd=None, **kwargs):
     """
     Input Args:
         name:               scope name
@@ -224,7 +224,6 @@ def conv_fire_parallel_residual_module(name, prevLayerOut, prevLayerDim, histori
 
     existingParams = kwargs.get('existingParams')
     
-    numParallelModules = kwargs.get('numParallelModules') # 2
     # Twin network -> numParallelModules = 2
     # Split tensor through last dimension into numParallelModules tensors
     prevLayerOut = tf.split(prevLayerOut, numParallelModules, axis=3)
@@ -290,7 +289,7 @@ def conv_fire_parallel_residual_module(name, prevLayerOut, prevLayerDim, histori
                                          dtype=dtype)
             else:
                 biases = tf.get_variable('biases', [fireDimsSingleModule[cnnName]],
-                                         initializer=tf.constant_initializer(0.0),
+                                         initializer=tf.contrib.layers.xavier_initializer(),
                                          dtype=dtype)
 
             for prl in range(numParallelModules):
@@ -312,7 +311,7 @@ def conv_fire_parallel_residual_module(name, prevLayerOut, prevLayerDim, histori
 
     return convRelu, numParallelModules*fireDimsSingleModule[cnnName]
 
-def conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, fireDimsSingleModule, wd=None, **kwargs):
+def conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, fireDimsSingleModule, numParallelModules, wd=None, **kwargs):
     """
     Input Args:
         name:               scope name
@@ -326,7 +325,6 @@ def conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, fireDimsSingleMo
 
     existingParams = kwargs.get('existingParams')
 
-    numParallelModules = kwargs.get('numParallelModules') # 2
     # Twin network -> numParallelModules = 2
     # Split tensor through last dimension into numParallelModules tensors
     prevLayerOut = tf.split(prevLayerOut, numParallelModules, axis=3)
@@ -380,7 +378,7 @@ def conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, fireDimsSingleMo
                                          dtype=dtype)
             else:
                 biases = tf.get_variable('biases', [fireDimsSingleModule[cnnName]],
-                                         initializer=tf.constant_initializer(0.0),
+                                         initializer=tf.contrib.layers.xavier_initializer(),
                                          dtype=dtype)
 
             for prl in range(numParallelModules):
@@ -403,7 +401,7 @@ def conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, fireDimsSingleMo
     return convRelu, numParallelModules*fireDimsSingleModule[cnnName]
 
 def conv_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim, 
-                                      fireDimsSingleModule, 
+                                      fireDimsSingleModule, numParallelModules,
                                       stride=[1, 1, 1, 1], 
                                       wd=None, **kwargs):
     """
@@ -419,7 +417,6 @@ def conv_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim,
 
     existingParams = kwargs.get('existingParams')
 
-    numParallelModules = kwargs.get('numParallelModules') # 2
     # Twin network -> numParallelModules = 2
     # Split tensor through last dimension into numParallelModules tensors
     prevLayerOut = tf.split(prevLayerOut, numParallelModules, axis=3)
@@ -465,7 +462,7 @@ def conv_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim,
                                          dtype=dtype)
             else:
                 biases = tf.get_variable('biases', [fireDimsSingleModule[cnnName]],
-                                         initializer=tf.constant_initializer(0.0),
+                                         initializer=tf.contrib.layers.xavier_initializer(),
                                          dtype=dtype)
 
             for prl in range(numParallelModules):
@@ -490,7 +487,7 @@ def conv_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim,
 
     return convRelu, numParallelModules*fireDimsSingleModule[cnnName], l2reg
 
-def conv_fire_parallel_inception_module(name, prevLayerOut, prevLayerDim, fireDimsSingleModule, wd=None, **kwargs):
+def conv_fire_parallel_inception_module(name, prevLayerOut, prevLayerDim, fireDimsSingleModule, numParallelModules=2, wd=None, **kwargs):
     """
     Input Args:
         name:               scope name
@@ -500,19 +497,19 @@ def conv_fire_parallel_inception_module(name, prevLayerOut, prevLayerDim, fireDi
         fireDimsSingleModule:     number of output dimensions for each parallel module
     """
     if (fireDimsSingleModule.get('cnn1x1')):
-        fireOut_1x1, prevExpandDim_1x1 = conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, {'cnn1x1': fireDimsSingleModule.get('cnn1x1')}, wd, **kwargs)
+        fireOut_1x1, prevExpandDim_1x1 = conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, {'cnn1x1': fireDimsSingleModule.get('cnn1x1')}, numParallelModules, wd, **kwargs)
     if (fireDimsSingleModule.get('cnn3x3')):
-        fireOut_3x3, prevExpandDim_3x3 = conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, {'cnn3x3': fireDimsSingleModule.get('cnn3x3')}, wd, **kwargs)
+        fireOut_3x3, prevExpandDim_3x3 = conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, {'cnn3x3': fireDimsSingleModule.get('cnn3x3')}, numParallelModules, wd, **kwargs)
     if (fireDimsSingleModule.get('cnn5x5')):
-        fireOut_5x5, prevExpandDim_5x5 = conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, {'cnn5x5': fireDimsSingleModule.get('cnn5x5')}, wd, **kwargs)
+        fireOut_5x5, prevExpandDim_5x5 = conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, {'cnn5x5': fireDimsSingleModule.get('cnn5x5')}, numParallelModules, wd, **kwargs)
     #if (fireDimsSingleModule.get('cnn7x7')):
-    #    fireOut_1x1, prevExpandDim_1x1 = conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, {'cnn7x7': fireDimsSingleModule.get('cnn7x7')}, wd, **kwargs)
+    #    fireOut_1x1, prevExpandDim_1x1 = conv_fire_parallel_module(name, prevLayerOut, prevLayerDim, {'cnn7x7': fireDimsSingleModule.get('cnn7x7')}, numParallelModules, wd, **kwargs)
     
     fireOut = tf.concat([fireOut_1x1, fireOut_3x3, fireOut_5x5], axis=3)
 
     return fireOut, (prevExpandDim_1x1+prevExpandDim_3x3+prevExpandDim_5x5)
 
-def conv_fire_parallel_inception_module_l2reg(name, prevLayerOut, prevLayerDim, fireDimsSingleModule, wd=None, stride=[1,1,1,1], **kwargs):
+def conv_fire_parallel_inception_module_l2reg(name, prevLayerOut, prevLayerDim, fireDimsSingleModule, numParallelModules=2, wd=None, stride=[1,1,1,1], **kwargs):
     """
     Input Args:
         name:               scope name
@@ -522,13 +519,13 @@ def conv_fire_parallel_inception_module_l2reg(name, prevLayerOut, prevLayerDim, 
         fireDimsSingleModule:     number of output dimensions for each parallel module
     """
     if (fireDimsSingleModule.get('cnn1x1')):
-        fireOut_1x1, prevExpandDim_1x1, l2_1x1 = conv_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim, {'cnn1x1': fireDimsSingleModule.get('cnn1x1')}, wd, stride, **kwargs)
+        fireOut_1x1, prevExpandDim_1x1, l2_1x1 = conv_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim, {'cnn1x1': fireDimsSingleModule.get('cnn1x1')}, numParallelModules, wd, stride, **kwargs)
     if (fireDimsSingleModule.get('cnn3x3')):
-        fireOut_3x3, prevExpandDim_3x3, l2_3x3 = conv_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim, {'cnn3x3': fireDimsSingleModule.get('cnn3x3')}, wd, stride, **kwargs)
+        fireOut_3x3, prevExpandDim_3x3, l2_3x3 = conv_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim, {'cnn3x3': fireDimsSingleModule.get('cnn3x3')}, numParallelModules, wd, stride, **kwargs)
     if (fireDimsSingleModule.get('cnn5x5')):
-        fireOut_5x5, prevExpandDim_5x5, l2_5x5 = conv_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim, {'cnn5x5': fireDimsSingleModule.get('cnn5x5')}, wd, stride, **kwargs)
+        fireOut_5x5, prevExpandDim_5x5, l2_5x5 = conv_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim, {'cnn5x5': fireDimsSingleModule.get('cnn5x5')}, numParallelModules, wd, stride, **kwargs)
     #if (fireDimsSingleModule.get('cnn7x7')):
-    #    fireOut_1x1, prevExpandDim_1x1, l2_7x7 = conv_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim, {'cnn7x7': fireDimsSingleModule.get('cnn7x7')}, wd, stride, **kwargs)
+    #    fireOut_1x1, prevExpandDim_1x1, l2_7x7 = conv_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim, {'cnn7x7': fireDimsSingleModule.get('cnn7x7')}, numParallelModules, wd, stride, **kwargs)
     
     fireOut = tf.concat([fireOut_1x1, fireOut_3x3, fireOut_5x5], axis=3)
 
@@ -685,7 +682,7 @@ def conv_fire_module(name, prevLayerOut, prevLayerDim, fireDims, wd=None, stride
                                              initializer=existingParams[layerName]['biases'], dtype=dtype)
                 else:
                     biases = tf.get_variable('biases', [fireDims[cnnName]],
-                                             initializer=tf.constant_initializer(0.0),
+                                             initializer=tf.contrib.layers.xavier_initializer(),
                                              dtype=dtype)
 
             conv = tf.nn.bias_add(conv, biases)
@@ -782,7 +779,7 @@ def conv_fire_module_l2regul(name, prevLayerOut, prevLayerDim,
                                              initializer=existingParams[layerName]['biases'], dtype=dtype)
                 else:
                     biases = tf.get_variable('biases', [fireDims[cnnName]],
-                                             initializer=tf.constant_initializer(0.0),
+                                             initializer=tf.contrib.layers.xavier_initializer(),
                                              dtype=dtype)
 
             conv = tf.nn.bias_add(conv, biases)
@@ -874,7 +871,7 @@ def conv_fire_module_sep(name, prevLayerOut, prevLayerDim, fireDims, wd=None, **
                                              initializer=existingParams[layerName]['biases'], dtype=dtype)
                 else:
                     biases = tf.get_variable('biases', [fireDims[cnnName]],
-                                             initializer=tf.constant_initializer(0.0),
+                                             initializer=tf.contrib.layers.xavier_initializer(),
                                              dtype=dtype)
 
             conv = tf.nn.bias_add(conv, biases)
@@ -1047,7 +1044,7 @@ def fc_fire_module(name, prevLayerOut, prevLayerDim, fireDims, wd=None, **kwargs
             
             with tf.variable_scope('biases', reuse=tf.AUTO_REUSE):
                 biases = tf.get_variable('biases', fireDims['fc'],
-                                         initializer=tf.constant_initializer(0.0), dtype=dtype)
+                                         initializer=tf.contrib.layers.xavier_initializer(), dtype=dtype)
             fc = tf.nn.bias_add(fc, biases)
             fcRelu = tf.nn.relu(fc, name=scope.name)
             
@@ -1087,7 +1084,7 @@ def fc_fire_module_l2regul(name, prevLayerOut, prevLayerDim, fireDims, wd=None, 
             
             with tf.variable_scope('biases', reuse=tf.AUTO_REUSE):
                 biases = tf.get_variable('biases', fireDims['fc'],
-                                         initializer=tf.constant_initializer(0.0), dtype=dtype)
+                                         initializer=tf.contrib.layers.xavier_initializer(), dtype=dtype)
             fc = tf.nn.bias_add(fc, biases)
             fcRelu = tf.nn.relu(fc, name=scope.name)
             
@@ -1095,6 +1092,59 @@ def fc_fire_module_l2regul(name, prevLayerOut, prevLayerDim, fireDims, wd=None, 
                 fcRelu = batch_norm('batchnorm', fcRelu, dtype, kwargs.get('phase'))
             _activation_summary(fcRelu)
             l2reg = tf.nn.l2_loss(fcWeights)
+
+        return fcRelu, fireDims['fc'], l2reg
+
+def fc_fire_parallel_module_l2regul(name, prevLayerOut, prevLayerDim, fireDims, numParallelModules, wd=None, **kwargs):
+    USE_FP_16 = kwargs.get('usefp16')
+    dtype = tf.float16 if USE_FP_16 else tf.float32
+
+    existingParams = kwargs.get('existingParams')
+    
+    # Twin network -> numParallelModules = 2
+    # Split tensor through last dimension into numParallelModules tensors
+    prevLayerOut = tf.split(prevLayerOut, numParallelModules, axis=3)
+    prevLayerIndivDims = prevLayerDim / numParallelModules
+
+    print('----', name, 'FC', prevLayerDim, fireDims['fc'], numParallelModules)
+
+
+    with tf.variable_scope(name):
+        with tf.variable_scope('fc') as scope:
+            stddev = np.sqrt(2/np.prod(prevLayerOut.get_shape().as_list()[1:]))
+            fcWeights = _variable_with_weight_decay('weights',
+                                                    shape=[prevLayerDim, fireDims['fc']],
+                                                    initializer=(tf.contrib.layers.xavier_initializer() if kwargs.get('phase')=='train'
+                                                                   else tf.constant_initializer(0.0, dtype=dtype)),
+                                                    dtype=dtype,
+                                                    wd=wd,
+                                                    trainable=kwargs.get('tuneExistingWeights') if (existingParams is not None and 
+                                                                                           layerName in existingParams) else True)
+            for prl in range(numParallelModules):
+                # prevLayerOut is [batchSize, HxWxD], matmul -> [batchSize, fireDims['fc']]
+                fc = tf.matmul(prevLayerOut[prl], fcWeights)
+                
+                if kwargs.get('weightNorm'):
+                    # calc weight norm
+                    fc = batch_norm('weight_norm', fc, dtype, kwargs.get('phase'))
+
+                with tf.variable_scope('biases', reuse=tf.AUTO_REUSE):
+                biases = tf.get_variable('biases', fireDims['fc'],
+                                         initializer=tf.contrib.layers.xavier_initializer(), dtype=dtype)
+
+                fcReluPrl = tf.nn.relu(fc, name=scope.name)
+                # Concatinate results along last dimension to get one output tensor
+                if prl is 0:
+                    fcRelu = fcReluPrl
+                else:
+                    fcRelu = tf.concat([fcRelu, fcReluPrl], axis=3)
+
+            _activation_summary(convRelu)
+            if kwargs.get('batchNorm'):
+                fcRelu = batch_norm('batchnorm', fcRelu, dtype, kwargs.get('phase'))
+
+            l2reg = tf.nn.l2_loss(fcWeights)
+            _activation_summary(fcRelu)
 
         return fcRelu, fireDims['fc'], l2reg
 
@@ -1124,7 +1174,7 @@ def fc_fire_LSTM_module(name, prevLayerOut, prevLayerDim, fireDims, wd=None, **k
                 fc = batch_norm('weight_norm', fc, dtype, kwargs.get('phase'))
 
             biases = tf.get_variable('biases', fireDims['fc'],
-                                     initializer=tf.constant_initializer(0.0), dtype=dtype)
+                                     initializer=tf.contrib.layers.xavier_initializer(), dtype=dtype)
             fc = tf.nn.bias_add(fc, biases)
             fcRelu = tf.nn.relu(fc, name=scope.name)
             _activation_summary(fcRelu)
@@ -1156,7 +1206,7 @@ def fc_regression_module(name, prevLayerOut, prevLayerDim, fireDims, wd=None, **
                 fc = batch_norm('weight_norm', fc, dtype, kwargs.get('phase'))
 
             biases = tf.get_variable('biases', fireDims['fc'],
-                                     initializer=tf.constant_initializer(0.0), dtype=dtype)
+                                     initializer=tf.contrib.layers.xavier_initializer(), dtype=dtype)
             fc = tf.nn.bias_add(fc, biases)
             _activation_summary(fc)
         
@@ -1188,7 +1238,7 @@ def fc_regression_module_l2regul(name, prevLayerOut, prevLayerDim, fireDims, wd=
                 fc = batch_norm('weight_norm', fc, dtype, kwargs.get('phase'))
 
             biases = tf.get_variable('biases', fireDims['fc'],
-                                     initializer=tf.constant_initializer(0.0), dtype=dtype)
+                                     initializer=tf.contrib.layers.xavier_initializer(), dtype=dtype)
             fc = tf.nn.bias_add(fc, biases)
             _activation_summary(fc)
             l2reg = tf.nn.l2_loss(fcWeights)
